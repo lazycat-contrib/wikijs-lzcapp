@@ -1,0 +1,66 @@
+application:
+  subdomain: wikijs
+  multi_instance: false
+  upstreams:
+    - location: /package-licenses/
+      backend: file:///lzcapp/pkg/content/licenses/
+    - location: /
+      backend: http://wikijs:3000/
+
+services:
+  db:
+    image: docker.1ms.run/library/postgres:16-alpine
+    environment:
+      - POSTGRES_DB=wiki
+      - POSTGRES_USER=wiki
+      - |-
+        POSTGRES_PASSWORD={{ stable_secret "wikijs_db_password" | replace "\r" "" | replace "\n" "" }}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U wiki -d wiki
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    binds:
+      - /lzcapp/var/pgdata:/var/lib/postgresql/data
+
+  wikijs:
+    # upstream: requarks/wiki:3.0.2
+    image: docker.1ms.run/requarks/wiki:3.0.2
+    depends_on:
+      - db
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=wiki
+      - DB_USER=wiki
+      - |-
+        DB_PASS={{ stable_secret "wikijs_db_password" | replace "\r" "" | replace "\n" "" }}
+      - TZ=Asia/Shanghai
+    binds:
+      - /lzcapp/var/content:/wiki/data/content
+      - /lzcapp/var/repo:/wiki/data/repo
+
+usage: |
+  Wiki.js 是现代知识库：Markdown 写作、页面树、细粒度权限和全文检索。
+
+  使用方法：
+  1. 打开应用，第一次访问会进入安装向导，填写管理员邮箱、密码和站点地址。
+  2. 安装完成后进入管理后台，建页面、组织目录树、配权限。
+  3. 在管理里可以装编辑器、搜索、认证等模块。
+
+  数据与安全：
+  - 数据库在 PostgreSQL（/lzcapp/var/pgdata），页面内容与 Git 仓库在 /lzcapp/var/{content,repo}。
+    卸载应用会一并删除，请定期备份。
+  - 数据库密码由平台稳定密钥生成，每个部署不同，不写成固定值。
+  - 本包不预置任何账号或默认口令；管理员账号由安装向导创建。
+  - 应用经懒猫入口鉴权访问。
+
+  说明：
+  - 本应用包含两个容器（Wiki.js + PostgreSQL），启动顺序由依赖关系保证。
+  - Wiki.js 3.x 仅支持 PostgreSQL，不能换 SQLite。
+  - 未配置邮件服务，邀请成员、找回密码等依赖邮件的功能不可用。
+  - 未做真机验证：安装向导、登录、建页面、权限设置以及重启后持久化均未在设备上实测。
